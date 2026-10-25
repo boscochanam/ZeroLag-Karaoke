@@ -93,6 +93,29 @@ python -m http.server 8642 --directory web
 Then open http://localhost:8642 (microphone access needs `localhost` or https). Browsers only use Windows' shared
 mode, so expect roughly 30–60 ms. Use **Measure** to compare against the native app on your machine.
 
+## Future features
+
+### Live pitch graph
+A scrolling graph of the note you're singing, in both the native app and the web version (web first).
+
+- **Detection:** YIN or MPM (McLeod Pitch Method) with parabolic interpolation. Use 2048-sample windows
+  with a 256-sample hop at 48 kHz, which gives about 190 pitch readings per second.
+- **Target accuracy:** about ±5 cents on held notes. The graph should trail your voice by about 20–30 ms, and none of this
+  touches the audio path.
+- **Read the dry mic signal,** before reverb and echo, so effect tails don't smear notes together.
+- **Cleanup:** a confidence threshold so breaths and consonants show as gaps, and a median filter to remove octave jumps.
+- **Display:** note lanes (C, C♯, D…), your pitch as a line, and the current note with a ±cents readout.
+- **Native:** analysis runs on its own low-priority thread, fed by a lock-free ring buffer from the audio thread.
+- **Later:** karaoke scoring against song melodies (e.g. UltraStar-format note files).
+
+### UI cleanup
+- Group controls into clear sections: **Setup** (devices, modes), **Sing** (levels, voice boost, pitch graph) and
+  **Effects**, so the main screen shows only what's needed while singing.
+- Effect presets (e.g. *Dry*, *Studio*, *Hall*, *Stadium*) with an "Advanced" toggle for individual sliders.
+- Collapse technical readouts (periods, ppm, jitter buffer) into a single latency badge with details on hover.
+- Remember device and effect settings between launches in the native app (the web version already does).
+- Use the same visual style for the native and web versions.
+
 ## Layout
 
 ```
