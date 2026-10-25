@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8642", "--bind", "127.0.0.1", "--directory", "web"],
+      "port": 8642,
+      "url": "http://localhost:8642"
+    }
+  ]
+}

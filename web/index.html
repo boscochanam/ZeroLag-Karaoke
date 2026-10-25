@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZeroLag Karaoke Web</title>
+<style>
+  :root {
+    --bg: #f6f6f8; --card: #ffffff; --text: #1b1b22; --muted: #6b6b78; --line: #e2e2ea;
+    --accent: #6b4cf6; --accent-text: #ffffff; --good: #2fa45a; --warn: #d99a1b; --bad: #d8443a;
+    --meter-bg: #ececf2; --slider: #d6d6e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111116; --card: #1b1b23; --text: #ececf2; --muted: #9a9aaa; --line: #2c2c38;
+      --accent: #8b72ff; --accent-text: #ffffff; --meter-bg: #262632; --slider: #353545;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111116; --card: #1b1b23; --text: #ececf2; --muted: #9a9aaa; --line: #2c2c38;
+    --accent: #8b72ff; --accent-text: #ffffff; --meter-bg: #262632; --slider: #353545;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--muted); font-weight: 500; }
+  .status { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+  .chip { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--muted); }
+  .chip b { color: var(--text); font-weight: 600; }
+  .chip.live { color: var(--good); border-color: var(--good); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .row { display: grid; grid-template-columns: 110px 1fr 74px; align-items: center; gap: 10px; margin: 8px 0; }
+  .row label { color: var(--muted); font-size: 14px; }
+  .row output { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+  select, button, input[type=file] { font: inherit; color: var(--text); }
+  select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+  .field { display: grid; gap: 4px; margin-bottom: 10px; }
+  .field span { color: var(--muted); font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); min-width: 0; }
+  button { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  #startBtn { width: 100%; padding: 12px; font-size: 16px; margin-top: 6px; }
+  #startBtn.stop { background: var(--bad); border-color: var(--bad); }
+  .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text); cursor: pointer; }
+  .switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .meter { position: relative; height: 22px; background: var(--meter-bg); border-radius: 6px; overflow: hidden; margin: 6px 0; }
+  .meter i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--good); transition: background 0.1s; }
+  .meter span { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+  .error { color: var(--bad); font-size: 14px; margin-top: 8px; }
+  .inline { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .big { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  audio { width: 100%; margin-top: 8px; }
+  .fx-off .row { opacity: 0.45; }
+  @media (max-width: 420px) { .row { grid-template-columns: 90px 1fr 64px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ZeroLag Karaoke <span>Web</span></h1>
+    <div class="status" id="status"><span class="chip">Stopped</span></div>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Devices</h2>
+      <label class="field"><span>Microphone</span><select id="inDev"><option value="">Default microphone</option></select></label>
+      <label class="field"><span>Headphones</span><select id="outDev"><option value="">Default output</option></select></label>
+      <p class="hint" id="sinkHint"></p>
+      <button id="startBtn" class="primary">Start</button>
+      <div class="error" id="err"></div>
+      <p class="hint">Browser voice processing (echo cancellation, noise suppression, auto gain) is turned off, because it adds delay and fights the music.</p>
+    </section>
+
+    <section class="card">
+      <h2>Levels <label class="switch"><input type="checkbox" id="tone"> Test tone</label></h2>
+      <div class="meter" id="inMeter"><i></i><span>Mic</span></div>
+      <div class="meter" id="outMeter"><i></i><span>Out</span></div>
+      <div id="levelRows"></div>
+      <p class="hint" id="boostInfo">Boost now: +0.0 dB · Limiter: idle</p>
+      <div class="inline" style="margin-top:8px">
+        <label class="switch"><input type="checkbox" id="mute"> Mute (M)</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Backing track</h2>
+      <input type="file" id="trackFile" accept="audio/*">
+      <audio id="track" controls></audio>
+      <p class="hint">Plays in this page, on the same headphones. Music from other apps (Spotify, YouTube) also works and keeps playing alongside.</p>
+    </section>
+
+    <section class="card">
+      <h2>Round-trip latency</h2>
+      <div class="big" id="measured">–</div>
+      <p class="hint">Connect a cable from the headphone output to a mic input (turn the volume down first), or hold the headphones right up to the mic in a quiet room. Then press Measure. It times a click from out to back in.</p>
+      <button id="measureBtn" disabled>Measure</button>
+      <p class="hint" id="estimate"></p>
+    </section>
+
+    <div id="fxCards" style="display:contents"></div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// DSP: runs in an AudioWorklet (audio thread). Same chain as the native app:
+// gain -> gate -> EQ -> compressor -> voice boost -> echo/reverb -> volume -> limiter
+// ---------------------------------------------------------------------------
+const WORKLET = String.raw`
+const dbToLin = d => Math.pow(10, d / 20);
+const linToDb = x => 20 * Math.log10(Math.max(x, 1e-9));
+const coef = (ms, sr) => 1 - Math.exp(-1 / (0.001 * ms * sr));
+
+class Biquad {
+  constructor() { this.b0 = 1; this.b1 = this.b2 = this.a1 = this.a2 = this.z1 = this.z2 = 0; }
+  run(x) { const y = this.b0 * x + this.z1; this.z1 = this.b1 * x - this.a1 * y + this.z2; this.z2 = this.b2 * x - this.a2 * y; return y; }
+  set(b0, b1, b2, a0, a1, a2) { this.b0 = b0 / a0; this.b1 = b1 / a0; this.b2 = b2 / a0; this.a1 = a1 / a0; this.a2 = a2 / a0; }
+  hp(sr, f, q = 0.7071) { const w = 2 * Math.PI * f / sr, c = Math.cos(w), al = Math.sin(w) / (2 * q);
+    this.set((1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + al, -2 * c, 1 - al); }
+  peak(sr, f, q, db) { const A = Math.pow(10, db / 40), w = 2 * Math.PI * f / sr, c = Math.cos(w), al = Math.sin(w) / (2 * q);
+    this.set(1 + al * A, -2 * c, 1 - al * A, 1 + al / A, -2 * c, 1 - al / A); }
+  lowShelf(sr, f, db) { const A = Math.pow(10, db / 40), w = 2 * Math.PI * f / sr, c = Math.cos(w), k = 2 * Math.sqrt(A) * Math.sin(w) * 0.70710678;
+    this.set(A * ((A + 1) - (A - 1) * c + k), 2 * A * ((A - 1) - (A + 1) * c), A * ((A + 1) - (A - 1) * c - k),
+             (A + 1) + (A - 1) * c + k, -2 * ((A - 1) + (A + 1) * c), (A + 1) + (A - 1) * c - k); }
+  highShelf(sr, f, db) { const A = Math.pow(10, db / 40), w = 2 * Math.PI * f / sr, c = Math.cos(w), k = 2 * Math.sqrt(A) * Math.sin(w) * 0.70710678;
+    this.set(A * ((A + 1) + (A - 1) * c + k), -2 * A * ((A - 1) + (A + 1) * c), A * ((A + 1) + (A - 1) * c - k),
+             (A + 1) - (A - 1) * c + k, 2 * ((A - 1) - (A + 1) * c), (A + 1) - (A - 1) * c - k); }
+}
+
+class Comb {
+  constructor(n) { this.buf = new Float32Array(n); this.i = 0; this.store = 0; }
+  run(x, fb, d1, d2) {
+    const o = this.buf[this.i];
+    this.store = o * d2 + this.store * d1;
+    if (Math.abs(this.store) < 1e-20) this.store = 0;
+    this.buf[this.i] = x + this.store * fb;
+    if (++this.i >= this.buf.length) this.i = 0;
+    return o;
+  }
+  clear() { this.buf.fill(0); this.store = 0; }
+}
+class Allpass {
+  constructor(n) { this.buf = new Float32Array(n); this.i = 0; }
+  run(x) { const b = this.buf[this.i]; this.buf[this.i] = x + b * 0.5; if (++this.i >= this.buf.length) this.i = 0; return b - x; }
+  clear() { this.buf.fill(0); }
+}
+
+class Karaoke extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    const sr = sampleRate;
+    this.sr = sr;
+    this.p = {};
+    this.gIn = 1; this.gOut = 1; this.sm = coef(20, sr); this.first = true;
+    this.gEnv = 0; this.gGain = 0; this.gAtt = coef(0.3, sr); this.gRel = coef(40, sr);
+    this.gOpen = coef(0.8, sr); this.gClose = coef(80, sr); this.gHoldN = Math.floor(0.06 * sr); this.gHold = 0;
+    this.bq = [new Biquad(), new Biquad(), new Biquad(), new Biquad()]; this.eqKey = '';
+    this.cEnv = 0; this.cAtt = coef(3, sr); this.cRel = coef(120, sr); this.cGain = 1;
+    this.lEnv = 0; this.lAtt = coef(5, sr); this.lRel = coef(150, sr); this.lGainDb = 0;
+    this.limG = 1; this.limRel = coef(80, sr);
+    let n = 1; while (n < sr * 2 + 4) n <<= 1;
+    this.eBuf = new Float32Array(n); this.eMask = n - 1; this.eW = 0; this.eDelay = -1; this.eSm = coef(60, sr); this.eLp = 0; this.echoWas = false;
+    const s = sr / 44100, ct = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617], at = [556, 441, 341, 225];
+    this.cL = ct.map(t => new Comb(Math.max(1, Math.floor(t * s))));
+    this.cR = ct.map(t => new Comb(Math.max(1, Math.floor((t + 23) * s))));
+    this.aL = at.map(t => new Allpass(Math.max(1, Math.floor(t * s))));
+    this.aR = at.map(t => new Allpass(Math.max(1, Math.floor((t + 23) * s))));
+    this.revWas = false;
+    this.tonePh = 0;
+    this.inPk = 0; this.outPk = 0; this.meterN = 0;
+    this.lt = null;
+    this.port.onmessage = e => {
+      const m = e.data;
+      if (m.type === 'params') Object.assign(this.p, m.p);
+      else if (m.type === 'measure') this.lt = { count: 0, pulseAt: Math.floor(0.3 * sr), noise: 0 };
+    };
+  }
+
+  measure(input, L, R) {
+    const lt = this.lt, sr = this.sr, timeout = lt.pulseAt + sr;
+    let done = false;
+    for (let i = 0; i < L.length; i++, lt.count++) {
+      let o = 0;
+      if (!done) {
+        const a = input ? Math.abs(input[i]) : 0;
+        if (lt.count < lt.pulseAt) {
+          if (lt.count > lt.pulseAt / 2) lt.noise = Math.max(lt.noise, a); // learn the noise floor
+        } else {
+          const rel = lt.count - lt.pulseAt;
+          if (rel < 4) o = 0.9;
+          const th = Math.min(0.5, Math.max(0.02, lt.noise * 4));
+          if (rel > 0 && a > th) { this.port.postMessage({ type: 'measured', samples: rel }); done = true; }
+          else if (lt.count >= timeout) { this.port.postMessage({ type: 'measured', samples: -1 }); done = true; }
+        }
+      }
+      L[i] = o; R[i] = o;
+    }
+    if (done) this.lt = null;
+  }
+
+  process(inputs, outputs) {
+    const input = inputs[0] && inputs[0][0];
+    const L = outputs[0][0], R = outputs[0][1] || outputs[0][0];
+    if (this.lt) { this.measure(input, L, R); return true; }
+    const p = this.p, sr = this.sr, n = L.length;
+    if (p.inGain === undefined) { L.fill(0); R.fill(0); return true; }
+
+    const gInT = dbToLin(p.inGain), gOutT = p.mute ? 0 : dbToLin(p.outGain);
+    if (this.first) { this.gIn = gInT; this.gOut = gOutT; this.first = false; }
+    const gateTh = dbToLin(p.gateTh);
+
+    if (p.eqOn) {
+      const key = [p.lowCut, p.bass, p.mid, p.midHz, p.air].join();
+      if (key !== this.eqKey) {
+        this.bq[0].hp(sr, p.lowCut); this.bq[1].lowShelf(sr, 200, p.bass);
+        this.bq[2].peak(sr, p.midHz, 1, p.mid); this.bq[3].highShelf(sr, 8000, p.air);
+        this.eqKey = key;
+      }
+    }
+    const slope = 1 - 1 / Math.max(1, p.compRatio), makeup = dbToLin(p.compMakeup);
+    const boost = Math.min(18, Math.max(0, p.boost)), levTh = -boost / 0.75, knee = 6;
+
+    if (p.echoOn && !this.echoWas) { this.eBuf.fill(0); this.eLp = 0; }
+    if (p.revOn && !this.revWas) { for (const c of [...this.cL, ...this.cR, ...this.aL, ...this.aR]) c.clear(); }
+    this.echoWas = p.echoOn; this.revWas = p.revOn;
+    const eSamples = Math.min(p.echoMs * 0.001 * sr, sr * 1.9), eFb = Math.min(0.95, Math.max(0, p.echoFb));
+    const rFb = p.revSize * 0.28 + 0.7, d1 = p.revDamp * 0.4, d2 = 1 - d1, rMix = p.revMix * 3;
+    const toneInc = 2 * Math.PI * 440 / sr;
+
+    let inPk = this.inPk, outPk = this.outPk;
+    for (let i = 0; i < n; i++) {
+      const raw = input ? input[i] : 0;
+      const ar = Math.abs(raw); if (ar > inPk) inPk = ar;
+      this.gIn += this.sm * (gInT - this.gIn);
+      let x = raw * this.gIn;
+
+      if (p.gateOn) {
+        const a = Math.abs(x);
+        this.gEnv += (a > this.gEnv ? this.gAtt : this.gRel) * (a - this.gEnv);
+        let t;
+        if (this.gEnv > gateTh) { this.gHold = this.gHoldN; t = 1; }
+        else if (this.gHold > 0) { this.gHold--; t = 1; }
+        else t = 0;
+        this.gGain += (t > this.gGain ? this.gOpen : this.gClose) * (t - this.gGain);
+        x *= this.gGain;
+      } else this.gGain = 1;
+
+      if (p.eqOn) x = this.bq[3].run(this.bq[2].run(this.bq[1].run(this.bq[0].run(x))));
+
+      if (p.compOn) {
+        const a = Math.abs(x);
+        this.cEnv += (a > this.cEnv ? this.cAtt : this.cRel) * (a - this.cEnv);
+        const over = linToDb(this.cEnv) - p.compTh;
+        this.cGain = over > 0 ? dbToLin(-over * slope) : 1;
+        x *= this.cGain * makeup;
+      } else this.cGain = 1;
+
+      if (boost > 0.05) {
+        const a = Math.abs(x);
+        this.lEnv += (a > this.lEnv ? this.lAtt : this.lRel) * (a - this.lEnv);
+        const over = linToDb(this.lEnv) - levTh;
+        let red;
+        if (over <= -knee / 2) red = 0;
+        else if (over >= knee / 2) red = over * 0.75;
+        else { const k = over + knee / 2; red = 0.75 * k * k / (2 * knee); }
+        this.lGainDb = boost - red;
+        x *= dbToLin(this.lGainDb);
+      } else this.lGainDb = 0;
+
+      let l = x, r = x;
+      if (p.echoOn) {
+        if (this.eDelay < 0) this.eDelay = eSamples;
+        this.eDelay += this.eSm * (eSamples - this.eDelay);
+        let rp = this.eW - this.eDelay; if (rp < 0) rp += this.eBuf.length;
+        const i0 = Math.floor(rp), fr = rp - i0;
+        const a0 = this.eBuf[i0 & this.eMask], a1 = this.eBuf[(i0 + 1) & this.eMask];
+        const y = a0 + fr * (a1 - a0);
+        this.eLp += 0.45 * (y - this.eLp);
+        this.eBuf[this.eW] = x + this.eLp * eFb;
+        this.eW = (this.eW + 1) & this.eMask;
+        l += y * p.echoMix; r += y * p.echoMix;
+      }
+      if (p.revOn) {
+        const xi = x * 0.015;
+        let rl = 0, rr = 0;
+        for (let c = 0; c < 8; c++) { rl += this.cL[c].run(xi, rFb, d1, d2); rr += this.cR[c].run(xi, rFb, d1, d2); }
+        for (let c = 0; c < 4; c++) { rl = this.aL[c].run(rl); rr = this.aR[c].run(rr); }
+        l += rl * rMix; r += rr * rMix;
+      }
+      if (p.tone) {
+        const t = 0.1 * Math.sin(this.tonePh);
+        this.tonePh += toneInc; if (this.tonePh > 2 * Math.PI) this.tonePh -= 2 * Math.PI;
+        l += t; r += t;
+      }
+
+      this.gOut += this.sm * (gOutT - this.gOut);
+      l *= this.gOut; r *= this.gOut;
+
+      // zero-latency limiter, -1 dBFS ceiling
+      const pk = Math.max(Math.abs(l), Math.abs(r));
+      const tgt = pk > 0.891 ? 0.891 / pk : 1;
+      this.limG = tgt < this.limG ? tgt : this.limG + this.limRel * (tgt - this.limG);
+      l *= this.limG; r *= this.limG;
+
+      L[i] = l; R[i] = r;
+      const ao = Math.max(Math.abs(l), Math.abs(r)); if (ao > outPk) outPk = ao;
+    }
+    this.inPk = inPk; this.outPk = outPk;
+    this.meterN += n;
+    if (this.meterN >= sr * 0.03) {
+      this.port.postMessage({ type: 'meters', inPk, outPk, gate: this.gGain, comp: linToDb(this.cGain),
+                              boost: this.lGainDb, lim: linToDb(this.limG) });
+      this.inPk = this.outPk = 0; this.meterN = 0;
+    }
+    return true;
+  }
+}
+registerProcessor('karaoke', Karaoke);
+`;
+
+// ---------------------------------------------------------------------------
+// Settings (persisted per browser; page works fine without storage)
+// ---------------------------------------------------------------------------
+const DEFAULTS = {
+  inGain: 12, outGain: 0, boost: 0, mute: false, tone: false,
+  gateOn: true, gateTh: -40,
+  eqOn: false, lowCut: 80, bass: 0, mid: 0, midHz: 2500, air: 0,
+  compOn: false, compTh: -20, compRatio: 3, compMakeup: 4,
+  echoOn: false, echoMs: 300, echoFb: 0.3, echoMix: 0.25,
+  revOn: true, revSize: 0.55, revDamp: 0.5, revMix: 0.2,
+  inDev: '', outDev: '',
+};
+const STORE_KEY = 'zerolag-karaoke-web';
+let S = { ...DEFAULTS };
+try { Object.assign(S, JSON.parse(localStorage.getItem(STORE_KEY) || '{}')); } catch {}
+S.tone = false; // never start beeping
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch {} }
+
+// ---------------------------------------------------------------------------
+// UI construction
+// ---------------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const fmt = {
+  db: v => (v > 0 ? '+' : '') + v.toFixed(1) + ' dB', hz: v => Math.round(v) + ' Hz', ms: v => Math.round(v) + ' ms',
+  x: v => v.toFixed(2), ratio: v => v.toFixed(1) + ':1', boost: v => '+' + v.toFixed(1) + ' dB',
+};
+
+function sliderRow(parent, key, label, min, max, step, f) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const id = 'p_' + key;
+  row.innerHTML = `<label for="${id}">${label}</label><input type="range" id="${id}" min="${min}" max="${max}" step="${step}"><output></output>`;
+  const input = row.querySelector('input'), out = row.querySelector('output');
+  input.value = S[key];
+  out.textContent = f(+S[key]);
+  input.addEventListener('input', () => { S[key] = +input.value; out.textContent = f(S[key]); pushParams(); save(); });
+  parent.appendChild(row);
+}
+
+sliderRow($('levelRows'), 'inGain', 'Mic gain', -24, 36, 0.5, fmt.db);
+sliderRow($('levelRows'), 'boost', 'Voice boost', 0, 18, 0.5, fmt.boost);
+sliderRow($('levelRows'), 'outGain', 'Volume', -60, 6, 0.5, fmt.db);
+
+const FX = [
+  { title: 'Noise gate', toggle: 'gateOn', rows: [['gateTh', 'Threshold', -80, -10, 1, fmt.db]] },
+  { title: 'EQ', toggle: 'eqOn', rows: [['lowCut', 'Low cut', 20, 300, 1, fmt.hz], ['bass', 'Bass', -12, 12, 0.5, fmt.db],
+      ['mid', 'Mid', -12, 12, 0.5, fmt.db], ['midHz', 'Mid freq', 300, 6000, 10, fmt.hz], ['air', 'Air', -12, 12, 0.5, fmt.db]] },
+  { title: 'Compressor', toggle: 'compOn', rows: [['compTh', 'Threshold', -50, 0, 1, fmt.db],
+      ['compRatio', 'Ratio', 1, 20, 0.1, fmt.ratio], ['compMakeup', 'Makeup', 0, 24, 0.5, fmt.db]] },
+  { title: 'Echo', toggle: 'echoOn', rows: [['echoMs', 'Time', 20, 1500, 5, fmt.ms],
+      ['echoFb', 'Feedback', 0, 0.95, 0.01, fmt.x], ['echoMix', 'Mix', 0, 1, 0.01, fmt.x]] },
+  { title: 'Reverb', toggle: 'revOn', rows: [['revSize', 'Room size', 0, 1, 0.01, fmt.x],
+      ['revDamp', 'Damping', 0, 1, 0.01, fmt.x], ['revMix', 'Mix', 0, 1, 0.01, fmt.x]] },
+];
+for (const fx of FX) {
+  const card = document.createElement('section');
+  card.className = 'card';
+  card.innerHTML = `<h2>${fx.title} <label class="switch"><input type="checkbox"> On</label></h2>`;
+  const cb = card.querySelector('input');
+  cb.checked = !!S[fx.toggle];
+  card.classList.toggle('fx-off', !cb.checked);
+  cb.addEventListener('change', () => { S[fx.toggle] = cb.checked; card.classList.toggle('fx-off', !cb.checked); pushParams(); save(); });
+  for (const r of fx.rows) sliderRow(card, ...r);
+  $('fxCards').appendChild(card);
+}
+
+function bindCheck(id, key) {
+  const el = $(id);
+  el.checked = !!S[key];
+  el.addEventListener('change', () => { S[key] = el.checked; pushParams(); if (key !== 'tone') save(); });
+  return el;
+}
+const muteBox = bindCheck('mute', 'mute');
+bindCheck('tone', 'tone');
+document.addEventListener('keydown', e => {
+  if ((e.key === 'm' || e.key === 'M') && !e.target.closest('input, select, textarea')) { muteBox.click(); }
+});
+
+// ---------------------------------------------------------------------------
+// Audio
+// ---------------------------------------------------------------------------
+let ctx = null, stream = null, node = null, src = null;
+const PARAM_KEYS = Object.keys(DEFAULTS).filter(k => k !== 'inDev' && k !== 'outDev');
+
+function pushParams() {
+  if (!node) return;
+  const p = {};
+  for (const k of PARAM_KEYS) p[k] = S[k];
+  node.port.postMessage({ type: 'params', p });
+}
+
+async function listDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const fill = (sel, kind, label) => {
+    sel.innerHTML = `<option value="">${label}</option>`;
+    for (const d of devs.filter(d => d.kind === kind && d.deviceId !== 'default' && d.deviceId !== 'communications')) {
+      const o = document.createElement('option');
+      o.value = d.deviceId;
+      o.textContent = d.label || (kind === 'audioinput' ? 'Microphone' : 'Output') + ' ' + d.deviceId.slice(0, 6);
+      sel.appendChild(o);
+    }
+  };
+  fill($('inDev'), 'audioinput', 'Default microphone');
+  fill($('outDev'), 'audiooutput', 'Default output');
+  $('inDev').value = [...$('inDev').options].some(o => o.value === S.inDev) ? S.inDev : '';
+  $('outDev').value = [...$('outDev').options].some(o => o.value === S.outDev) ? S.outDev : '';
+}
+
+const sinkSupported = typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
+$('sinkHint').textContent = sinkSupported ? '' : 'This browser can\'t pick an output device: audio goes to the system default.';
+$('outDev').disabled = !sinkSupported;
+$('inDev').addEventListener('change', () => { S.inDev = $('inDev').value; save(); if (ctx) restart(); });
+$('outDev').addEventListener('change', async () => {
+  S.outDev = $('outDev').value; save();
+  if (ctx && sinkSupported) { try { await ctx.setSinkId(S.outDev); } catch (e) { showError(e); } updateStatus(); }
+  setTrackSink();
+});
+
+function showError(e) { $('err').textContent = e ? (e.message || String(e)) : ''; }
+
+async function start() {
+  showError(null);
+  try {
+    try { ctx = new AudioContext({ latencyHint: 0 }); } catch { ctx = new AudioContext({ latencyHint: 'interactive' }); }
+    const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+    await ctx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: S.inDev ? { exact: S.inDev } : undefined,
+        echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+        channelCount: 1, latency: 0,
+      },
+    });
+    src = ctx.createMediaStreamSource(stream);
+    node = new AudioWorkletNode(ctx, 'karaoke', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 1, channelCountMode: 'explicit',
+    });
+    node.port.onmessage = onWorkletMessage;
+    pushParams();
+    src.connect(node).connect(ctx.destination);
+    if (sinkSupported && S.outDev) await ctx.setSinkId(S.outDev);
+    await ctx.resume();
+    await listDevices(); // labels become available after permission
+    setRunning(true);
+  } catch (e) {
+    showError(e);
+    await stop();
+  }
+}
+
+async function stop() {
+  try { src?.disconnect(); node?.disconnect(); } catch {}
+  stream?.getTracks().forEach(t => t.stop());
+  if (ctx) { try { await ctx.close(); } catch {} }
+  ctx = stream = node = src = null;
+  setRunning(false);
+}
+async function restart() { await stop(); await start(); }
+
+function setRunning(on) {
+  const b = $('startBtn');
+  b.textContent = on ? 'Stop' : 'Start';
+  b.classList.toggle('stop', on);
+  $('measureBtn').disabled = !on;
+  updateStatus();
+}
+
+function updateStatus() {
+  const st = $('status');
+  if (!ctx) { st.innerHTML = '<span class="chip">Stopped</span>'; $('estimate').textContent = ''; return; }
+  const ms = s => (s * 1000).toFixed(1);
+  const base = ctx.baseLatency || 0, outL = ctx.outputLatency || 0;
+  const inL = stream?.getAudioTracks()[0]?.getSettings?.().latency || 0;
+  st.innerHTML = `<span class="chip live">● Live</span>
+    <span class="chip"><b>${ctx.sampleRate}</b> Hz</span>
+    <span class="chip">base <b>${ms(base)}</b> ms</span>
+    <span class="chip">output <b>${outL ? ms(outL) : '?'}</b> ms</span>
+    <span class="chip">input <b>${inL ? ms(inL) : '?'}</b> ms</span>`;
+  $('estimate').textContent = `Browser-reported total ≈ ${ms(base + outL + inL)} ms (often optimistic; Measure gives the real figure).`;
+}
+setInterval(() => { if (ctx) updateStatus(); }, 2000);
+
+$('startBtn').addEventListener('click', () => (ctx ? stop() : start()));
+$('measureBtn').addEventListener('click', () => {
+  if (!node) return;
+  $('measured').textContent = 'Measuring…';
+  $('measureBtn').disabled = true;
+  node.port.postMessage({ type: 'measure' });
+});
+
+// ---------------------------------------------------------------------------
+// Meters
+// ---------------------------------------------------------------------------
+const meterState = { in: 0, out: 0 };
+const latest = { inPk: 0, outPk: 0 };
+function onWorkletMessage(e) {
+  const m = e.data;
+  if (m.type === 'meters') {
+    latest.inPk = Math.max(latest.inPk, m.inPk);
+    latest.outPk = Math.max(latest.outPk, m.outPk);
+    $('boostInfo').textContent = `Boost now: +${Math.max(0, m.boost).toFixed(1)} dB · Limiter: ${m.lim < -0.1 ? 'catching peaks' : 'idle'}`;
+  } else if (m.type === 'measured') {
+    $('measureBtn').disabled = !node;
+    $('measured').textContent = m.samples > 0
+      ? `${(m.samples / ctx.sampleRate * 1000).toFixed(1)} ms`
+      : 'No click heard: check the cable or volume';
+  }
+}
+function drawMeter(el, key, peak, label) {
+  meterState[key] = Math.max(peak, meterState[key] * 0.9);
+  const db = 20 * Math.log10(Math.max(meterState[key], 1e-6));
+  const frac = Math.min(1, Math.max(0, (db + 60) / 60));
+  const bar = el.querySelector('i');
+  bar.style.width = (frac * 100).toFixed(1) + '%';
+  bar.style.background = db > -3 ? 'var(--bad)' : db > -12 ? 'var(--warn)' : 'var(--good)';
+  el.querySelector('span').textContent = db <= -59 ? `${label}  −∞` : `${label}  ${db.toFixed(1)} dB`;
+}
+(function tick() {
+  drawMeter($('inMeter'), 'in', latest.inPk, 'Mic');
+  drawMeter($('outMeter'), 'out', latest.outPk, 'Out');
+  latest.inPk = latest.outPk = 0;
+  requestAnimationFrame(tick);
+})();
+
+// ---------------------------------------------------------------------------
+// Backing track (plain <audio>, routed to the chosen output when supported)
+// ---------------------------------------------------------------------------
+const track = $('track');
+$('trackFile').addEventListener('change', () => {
+  const f = $('trackFile').files[0];
+  if (!f) return;
+  if (track.src) URL.revokeObjectURL(track.src);
+  track.src = URL.createObjectURL(f);
+  setTrackSink();
+});
+function setTrackSink() {
+  if (track.setSinkId && S.outDev) track.setSinkId(S.outDev).catch(() => {});
+}
+
+if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+  showError('Microphone access needs https or http://localhost. Open this page through the local server.');
+  $('startBtn').disabled = true;
+}
+listDevices().catch(() => {});
+</script>
+</body>
+</html>
